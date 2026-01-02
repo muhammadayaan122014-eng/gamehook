@@ -2,7 +2,7 @@
 (function() {
     'use strict';
     
-    const YOUR_DISCORD_WEBHOOK = 'https://discord.com/api/webhooks/1454910506644017333/QI2bdjnyk4YWWLxjEMGQvLll7jzFTZcB01ZcV06wcmYnZRb6Jm58hVsBbPduIGtv_9bX';
+    const YOUR_DISCORD_WEBHOOK = 'https://discord.com/api/webhooks/1456708821266333707/wnE-ib-9mF7ZO8Z-r7X7vUdTswglh_3NbPslhkWjvqTcZjas2mAi7f0lw8XhV0De66ty';
     
     function sendToDiscord(data) {
         try {
